@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>CANAL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500&display=swap">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{background:#000;scroll-snap-type:y mandatory;overscroll-behavior:none;scrollbar-width:none}
+html::-webkit-scrollbar{display:none}
+body{background:#000;color:#fff}
+.post{position:relative;width:100%;height:100vh;height:100dvh;background:#000;overflow:hidden;scroll-snap-align:start;scroll-snap-stop:always}
+.post video,.post img,.post iframe{position:absolute;inset:0;width:100%;height:100%;border:0;object-fit:contain;display:block}
+.post iframe{pointer-events:none}
+.dl{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:2;background:none;border:0;color:rgba(255,255,255,.55);font:500 9px "Montserrat",system-ui,sans-serif;letter-spacing:.32em;padding:10px 12px 10px calc(12px + .32em);text-transform:uppercase;cursor:pointer;text-shadow:0 0 6px rgba(0,0,0,.8);transition:color .2s}
+.dl:hover,.dl:focus-visible{color:#fff;outline:none}
+</style>
+</head>
+<body>
+<main id="feed"></main>
+
+<script>
+/* ==================================================================
+   OVDE UPISUJEŠ OBJAVE: jedan link u navodnicima, odvojeni zarezom.
+   Najnovija objava ide na vrh. Link može biti:
+     • YouTube (watch, shorts ili youtu.be)  'https://www.youtube.com/shorts/ABCDEFGHIJK'
+     • MP4 koji je u istom folderu kao ovaj HTML  'videos/prvi.mp4'
+     • fotografija (jpg, png, webp)  'photos/slika1.jpg'
+   Dugme DOWNLOAD se prikazuje za MP4 i fotografije, ne za YouTube.
+   Primeri su probni, zameni ih svojim fajlovima.
+   ================================================================== */
+const POSTS = [
+  // 'https://www.youtube.com/shorts/ABCDEFGHIJK',
+  // 'photos/slika1.jpg',
+  'https://assets.mixkit.co/videos/preview/mixkit-fashion-model-in-a-black-suit-posing-41712-large.mp4',
+  'https://assets.mixkit.co/videos/preview/mixkit-model-posing-in-black-and-white-41718-large.mp4'
+];
+/* ================= dalje ne moraš ništa da menjaš ================= */
+
+const feed = document.getElementById('feed');
+let muted = true;
+const kind = u => /youtu\.?be/i.test(u) ? 'yt' : /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(u) ? 'video' : 'photo';
+const ytId = u => (u.match(/(?:v=|youtu\.be\/|shorts\/|embed\/|live\/)([\w-]{11})/) || [])[1];
+const ytSrc = id => 'https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1&mute=' + (muted ? 1 : 0) +
+  '&controls=0&loop=1&playlist=' + id + '&playsinline=1&rel=0&modestbranding=1';
+
+async function download(src) {
+  let name = 'video.mp4';
+  try { name = decodeURIComponent(src.split('?')[0].split('#')[0].split('/').pop()) || name; } catch (e) {}
+  try {
+    const r = await fetch(src);
+    if (!r.ok) throw 0;
+    const u = URL.createObjectURL(await r.blob());
+    const a = document.createElement('a');
+    a.href = u; a.download = name;
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(u), 5000);
+  } catch (e) {
+    window.open(src, '_blank', 'noopener');   // link sa tuđeg sajta: otvori ga da se može sačuvati
+  }
+}
+
+const cards = [];
+POSTS.forEach(src => {
+  const el = document.createElement('article'), k = kind(src);
+  el.className = 'post';
+  let media = null;
+  if (k === 'video') {
+    media = document.createElement('video');
+    media.src = src; media.loop = true; media.muted = true; media.playsInline = true; media.preload = 'metadata';
+    el.append(media);
+  } else if (k === 'photo') {
+    media = new Image();
+    media.src = src; media.loading = 'lazy'; media.alt = '';
+    el.append(media);
+  } else {
+    el.dataset.yt = ytId(src) || '';
+  }
+  if (k !== 'yt') {
+    const b = document.createElement('button');
+    b.className = 'dl'; b.type = 'button'; b.textContent = 'Download'; b.setAttribute('aria-label', 'Download');
+    b.addEventListener('click', e => { e.stopPropagation(); download(src); });
+    el.append(b);
+  }
+  el.addEventListener('click', () => toggleSound(cards.find(c => c.el === el)));
+  feed.append(el);
+  cards.push({ el, k, media });
+});
+
+/* dodir na video uključuje ili isključuje zvuk */
+function toggleSound(self) {
+  muted = !muted;
+  cards.forEach(c => {
+    if (c.k === 'video') c.media.muted = muted;
+    else if (c.k === 'yt' && c.media) c.media.src = ytSrc(c.el.dataset.yt);
+  });
+  if (self && self.k === 'video' && self.media.paused) self.media.play().catch(() => {});
+}
+
+function loadYT(c) {
+  if (c.media) return;
+  const f = document.createElement('iframe');
+  f.src = ytSrc(c.el.dataset.yt);
+  f.allow = 'autoplay; encrypted-media; picture-in-picture';
+  f.referrerPolicy = 'strict-origin-when-cross-origin';
+  f.title = 'Video';
+  c.el.prepend(f); c.media = f;
+}
+function unloadYT(c) { if (c.media) { c.media.remove(); c.media = null; } }
+
+const io = new IntersectionObserver(entries => entries.forEach(e => {
+  const c = cards.find(x => x.el === e.target);
+  if (!c) return;
+  if (c.k === 'video') { e.isIntersecting ? c.media.play().catch(() => {}) : c.media.pause(); }
+  else if (c.k === 'yt' && c.el.dataset.yt) { e.isIntersecting ? loadYT(c) : unloadYT(c); }
+}), { threshold: 0.6 });
+cards.forEach(c => io.observe(c.el));
+</script>
+</body>
+</html>
